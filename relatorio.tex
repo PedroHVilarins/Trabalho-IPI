@@ -1,0 +1,207 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[portuguese]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\geometry{margin=2.0cm}
+
+\title{\textbf{Análise Morfológica de Imagens para Detecção de Bordas Endocárdicas do Ventrículo Esquerdo em Ecocardiogramas 2D}}
+\author{Gustavo Santos - Matrícula \\ Lindoso - Matrícula \\ Pedro Henrique Da Costa Vilarins  - 180114441\\
+\small Universidade de Brasília (UnB)}
+\date{Dezembro de 2025}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Este relatório apresenta a implementação e avaliação do método semi-automático para detecção de bordas endocárdicas em imagens ecocardiográficas proposto por Choy e Jin (1996). O método combina técnicas de análise morfológica de imagens com o operador Laplaciano da Gaussiana (LoG) para redução de ruído e detecção de bordas. A implementação foi validada utilizando o dataset CAMUS, obtendo um coeficiente Dice médio de 0.798 $\pm$ 0.066 e erro RMS de 15.74 $\pm$ 1.54 pixels. Os resultados demonstram a eficácia do método clássico de processamento morfológico para segmentação cardíaca.
+\end{abstract}
+
+
+\section{Introdução}
+
+A ecocardiografia bidimensional (eco 2D) é uma técnica de imagem ultrassônica amplamente utilizada no diagnóstico de doenças cardíacas. A detecção das bordas endocárdicas fornece uma maneira de medir áreas cardíacas, volumes e movimento, auxiliando no reconhecimento e avaliação de doenças cardiovasculares \cite{choy1996}.
+
+Parâmetros como a fração de ejeção, derivados de medições de volume, são de grande valor clínico na avaliação do desempenho cardíaco. A confiabilidade da estimativa da fração de ejeção depende da precisão das medições de volume, que por sua vez dependem da precisão da detecção de bordas.
+
+Este trabalho implementa o método proposto por Choy e Jin \cite{choy1996}, que combina filtragem morfológica com o operador de segunda derivada (Laplaciano da Gaussiana) para detecção de bordas endocárdicas do ventrículo esquerdo.
+
+\section{Metodologia}
+
+O algoritmo segue o pipeline ilustrado na Figura \ref{fig:pipeline}, composto por quatro etapas principais: (1) pré-processamento com filtragem morfológica, (2) detecção de bordas com filtro LoG, (3) segmentação watershed e (4) extração do contorno final.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.4\textwidth]{figura_1.png}
+\caption{Diagrama de blocos do algoritmo de extração de bordas (Choy \& Jin, 1996).}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{Pré-processamento: Filtragem Morfológica}
+
+A filtragem morfológica é utilizada para reduzir ruído e aumentar o contraste da imagem. O método considera o gráfico da imagem de eco 2D como uma superfície topográfica, onde o nível de intensidade de um pixel representa sua altitude.
+
+Define-se a \textit{elevação} de um ponto $x$ como:
+\begin{equation}
+    elevacao(x) = altura(x) - altura(minimo(bacia(x)))
+\end{equation}
+
+onde $bacia(x)$ é a bacia que contém o ponto $x$, e $minimo(M)$ é o ponto de menor intensidade na bacia $M$.
+
+Pontos com elevação menor que um limiar $h$ (tipicamente entre 15 e 55) são zerados, removendo o ruído na região da cavidade enquanto preserva as bordas.
+
+\subsection{Detecção de Bordas: Filtro LoG}
+
+O operador Laplaciano da Gaussiana (LoG) é aplicado para detecção de bordas:
+\begin{equation}
+    LoG(x,y) = -\frac{1}{\pi\sigma^4}\left[1 - \frac{x^2 + y^2}{2\sigma^2}\right]e^{-\frac{x^2+y^2}{2\sigma^2}}
+\end{equation}
+
+Os \textit{zero-crossings} (cruzamentos por zero) da imagem convoluída indicam as localizações das bordas com precisão sub-pixel.
+
+\subsection{Segmentação Watershed}
+
+A segmentação watershed é aplicada sobre os valores positivos da imagem convoluída. O algoritmo utiliza marcadores para:
+\begin{itemize}
+    \item Marcador 1: Região da cavidade do VE (a partir de um ponto semente)
+    \item Marcador 2: Fundo/exterior da imagem
+\end{itemize}
+
+As linhas de watershed formam o contorno inicial, localizado a poucos pixels das bordas reais.
+
+\subsection{Extração do Contorno}
+
+O contorno final é extraído em três passos:
+\begin{enumerate}
+    \item Busca ao longo da direção normal por zero-crossings
+    \item Busca na vizinhança para maximizar pontos do contorno
+    \item Interpolação para preencher lacunas no contorno
+\end{enumerate}
+
+\section{Materiais e Métodos}
+
+\subsection{Dataset}
+
+Foi utilizado o dataset CAMUS (Cardiac Acquisitions for Multi-structure Ultrasound Segmentation) \cite{leclerc2019}, disponível gratuitamente sob licença CC BY-NC-SA 4.0 para uso em pesquisa científica não-comercial. O dataset contém imagens de ecocardiografia 2D com anotações de especialistas, incluindo:
+\begin{itemize}
+    \item Vistas apicais de 2 câmaras (2CH) e 4 câmaras (4CH)
+    \item Frames de fim de diástole (ED) e fim de sístole (ES)
+    \item Segmentações ground truth para cavidade do VE, miocárdio e átrio esquerdo
+\end{itemize}
+
+\subsection{Parâmetros}
+
+Os parâmetros utilizados na implementação foram:
+\begin{itemize}
+    \item Limiar de elevação: $h = 25$
+    \item Sigma do filtro LoG: $\sigma = 3.0$
+    \item Raio de busca para zero-crossings: 5 pixels
+\end{itemize}
+
+\subsection{Métricas de Avaliação}
+
+A avaliação seguiu a metodologia do paper original:
+
+\textbf{Erro RMS} (Equação 2 do paper):
+\begin{equation}
+    RMS = \sqrt{\frac{1}{N}\sum_{i=1}^{N}d(L_{Ci}, L_{Hi})^2}
+\end{equation}
+
+onde $L_C$ são os pontos do contorno computado e $L_H$ os pontos do contorno manual (ground truth).
+
+\textbf{Coeficiente Dice}:
+\begin{equation}
+    Dice = \frac{2|A \cap B|}{|A| + |B|}
+\end{equation}
+
+\textbf{Índice de Jaccard (IoU)}:
+\begin{equation}
+    IoU = \frac{|A \cap B|}{|A \cup B|}
+\end{equation}
+
+\section{Resultados}
+
+\subsection{Resultados Quantitativos}
+
+A Tabela \ref{tab:resultados} apresenta os resultados obtidos para cada imagem processada.
+
+\begin{table}[H]
+\centering
+\caption{Resultados por imagem do dataset CAMUS}
+\label{tab:resultados}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Imagem} & \textbf{Erro RMS (px)} & \textbf{Dice} & \textbf{IoU} & \textbf{Razão Área} \\
+\midrule
+2CH\_ED & 14.07 & 0.849 & 0.738 & 1.043 \\
+2CH\_ES & 15.46 & 0.704 & 0.543 & 1.176 \\
+4CH\_ED & 18.24 & 0.869 & 0.769 & 0.897 \\
+4CH\_ES & 15.19 & 0.769 & 0.624 & 0.881 \\
+\midrule
+\textbf{Média} & \textbf{15.74 $\pm$ 1.54} & \textbf{0.798 $\pm$ 0.066} & \textbf{0.669 $\pm$ 0.089} & \textbf{0.999 $\pm$ 0.116} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Comparação com o Paper Original}
+
+A Tabela \ref{tab:comparacao} compara os resultados obtidos com os reportados no paper original.
+
+\begin{table}[H]
+\centering
+\caption{Comparação com resultados do paper original}
+\label{tab:comparacao}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Métrica} & \textbf{Este Trabalho} & \textbf{Choy \& Jin (1996)} \\
+\midrule
+Erro RMS & 15.74 px & 2.56 px \\
+Desvio Padrão & 1.54 px & 1.21 px \\
+Correlação de Área & $\sim$0.90 & 0.99 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Nota:} A diferença no erro RMS deve-se principalmente à diferença no tamanho das imagens. O paper original utilizou imagens de aproximadamente $128 \times 128$ pixels, enquanto as imagens do CAMUS possuem resolução de $549 \times 389$ pixels. Normalizando pelo tamanho, o erro relativo é comparável.
+
+\subsection{Análise Visual}
+
+A Figura \ref{fig:resultados} ilustra o pipeline completo de processamento para uma imagem 4CH em fim de diástole.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{patient0001_4CH_ED_pipeline.png}
+\caption{Resultados do processamento para imagem 4CH-ED: (a) Original, (b) Filtragem morfológica, (c) LoG, (d) Zero-crossings, (e) Watershed, (f) Contorno inicial, (g) Contorno final, (h) GT vs Computado.}
+\label{fig:resultados}
+\end{figure}
+
+\section{Discussão}
+
+O método implementado demonstrou resultados satisfatórios na segmentação do ventrículo esquerdo, com Dice médio de 0.798. A filtragem morfológica efetivamente remove ruído da região da cavidade e o filtro LoG detecta bordas com boa precisão. As principais limitações são: necessidade de um ponto semente dentro da cavidade (semi-automático), sensibilidade a dropouts nas imagens e parâmetros que podem necessitar ajuste para diferentes equipamentos.
+
+\section{Conclusão}
+
+A implementação do método de Choy e Jin (1996) para detecção de bordas endocárdicas demonstrou a viabilidade de técnicas clássicas de processamento morfológico para segmentação cardíaca. O coeficiente Dice de 0.798 indica boa concordância com as anotações de especialistas.
+
+\begin{thebibliography}{9}
+
+\bibitem{choy1996}
+Choy, M. M., \& Jin, J. S. (1996). Morphological image analysis of left-ventricular endocardial borders in 2D echocardiograms. \textit{SPIE Vol. 2710}, 852-863.
+
+\bibitem{leclerc2019}
+Leclerc, S., Smistad, E., Pedrosa, J., Ostvik, A., et al. (2019). Deep Learning for Segmentation using an Open Large-Scale Dataset in 2D Echocardiography. \textit{IEEE Transactions on Medical Imaging}, 38(9), 2198-2210. doi: 10.1109/TMI.2019.2900516. Dataset disponível sob licença CC BY-NC-SA 4.0.
+
+\end{thebibliography}
+
+\end{document}
